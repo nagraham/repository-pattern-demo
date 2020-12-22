@@ -44,6 +44,21 @@ public class Wishlist {
     }
 
     /**
+     * Rehydrates a Wishlist object based on an existing set of Wishlist data.
+     *
+     * This is intended to be used to create a Wishlist from a JSON object or some
+     * object stored in a Repository.
+     *
+     * @param wishlistId The Wishlist id
+     * @param ownerId The owner id
+     * @param name The name of the wishlist
+     * @return the rehydrated wishlist object
+     */
+    public static Wishlist rehydrate(UUID wishlistId, UUID ownerId, String name) {
+        return new Wishlist(wishlistId, ownerId, name);
+    }
+
+    /**
      * Validates the Wishlist.
      *
      * @return An Optional String, which if present, contains the reason the Wishlist is invalid

@@ -4,9 +4,7 @@ import org.alexgraham.wishlist.domain.Wishlist;
 import org.alexgraham.wishlist.domain.WishlistService;
 import org.alexgraham.wishlist.persistence.DynamoRepository;
 import org.alexgraham.wishlist.persistence.WishlistStorable;
-import org.junit.jupiter.api.BeforeAll;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.*;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -20,6 +18,7 @@ import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
 
 import java.net.URI;
+import java.util.MissingResourceException;
 import java.util.UUID;
 
 import static org.hamcrest.MatcherAssert.assertThat;
@@ -75,22 +74,57 @@ class IntegrationTest {
         this.wishlistService = new WishlistService(new DynamoRepository(dynamoDbEnhancedClient, TABLE_NAME));
     }
 
-    @Test
-    void testCreateWishlist_success() {
-        UUID owner = UUID.randomUUID();
-        Wishlist wishlist = wishlistService.createWishlist(owner, "create a wishlist!");
+    @Nested
+    @DisplayName("CreateWishlist")
+    class CreateWishlist {
 
-        WishlistStorable storable = wishlistStorableDynamoDbTable.getItem(Key.builder()
-                .partitionValue(wishlist.wishlistId().toString())
-                .build());
+        @Test
+        void success() {
+            UUID owner = UUID.randomUUID();
+            Wishlist wishlist = wishlistService.createWishlist(owner, "create a wishlist!");
 
-        assertThat(wishlist.wishlistId().toString(), is(storable.getId()));
+            WishlistStorable storable = wishlistStorableDynamoDbTable.getItem(Key.builder()
+                    .partitionValue(wishlist.wishlistId().toString())
+                    .build());
+
+            assertThat(wishlist.wishlistId().toString(), is(storable.getId()));
+        }
+
+        @Test
+        void invalidArgument() {
+            UUID owner = UUID.randomUUID();
+
+            assertThrows(IllegalArgumentException.class, () -> wishlistService.createWishlist(owner, null));
+        }
     }
 
-    @Test
-    void testCreateWishlist_invalidArgument() {
-        UUID owner = UUID.randomUUID();
+    @Nested
+    @DisplayName("GetWishlistById")
+    class GetWishlistById {
 
-        assertThrows(IllegalArgumentException.class, () -> wishlistService.createWishlist(owner, null));
+        @Test
+        void success() {
+            UUID wishlistId = UUID.randomUUID();
+            UUID owner = UUID.randomUUID();
+            WishlistStorable wishlistStorable = new WishlistStorable(
+                    wishlistId.toString(),
+                    owner.toString(),
+                    "test-name");
+            wishlistStorableDynamoDbTable.putItem(wishlistStorable);
+
+            Wishlist wishlist = wishlistService.getWishlistById(wishlistId);
+
+            assertThat(wishlist.wishlistId(), is(wishlistId));
+            assertThat(wishlist.ownerId(), is(owner));
+            assertThat(wishlist.name(), is("test-name"));
+        }
+
+        @Test
+        void missingWishlist() {
+            UUID wishlistId = UUID.randomUUID();
+
+            assertThrows(MissingResourceException.class, () -> wishlistService.getWishlistById(wishlistId));
+        }
+
     }
 }

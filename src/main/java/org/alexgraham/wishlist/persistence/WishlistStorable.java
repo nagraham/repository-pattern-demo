@@ -4,6 +4,8 @@ import org.alexgraham.wishlist.domain.Wishlist;
 import software.amazon.awssdk.enhanced.dynamodb.mapper.annotations.DynamoDbBean;
 import software.amazon.awssdk.enhanced.dynamodb.mapper.annotations.DynamoDbPartitionKey;
 
+import java.util.UUID;
+
 @DynamoDbBean
 public class WishlistStorable {
 
@@ -27,6 +29,14 @@ public class WishlistStorable {
         this.id = id;
         this.ownerId = ownerId;
         this.name = name;
+    }
+
+    public Wishlist toWishlist() {
+        return Wishlist.rehydrate(
+                UUID.fromString(id),
+                UUID.fromString(ownerId),
+                name
+        );
     }
 
     @DynamoDbPartitionKey

@@ -1,5 +1,9 @@
 package org.alexgraham.wishlist.domain;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.util.MissingResourceException;
 import java.util.UUID;
 
 /**
@@ -10,6 +14,7 @@ import java.util.UUID;
  * (domain models, utilities, persistence layer) to get stuff done.
  */
 public class WishlistService {
+    private static final Logger logger = LoggerFactory.getLogger(WishlistService.class);
 
     private final Repository repo;
 
@@ -26,10 +31,22 @@ public class WishlistService {
 
         try {
             repo.save(newWishlist);
-        } catch (Exception e){
-            throw new RuntimeException("Internal Server Error");
+        } catch (Exception e) { // unhandled exceptions
+            logger.error("Error creating wishlist ownerId={} name={}", ownerId.toString(), name, e);
+            throw new RuntimeException("Internal Service Error");
         }
 
         return newWishlist;
+    }
+
+    public Wishlist getWishlistById(UUID wishlistId) {
+        try {
+            return repo.getById(wishlistId);
+        } catch (MissingResourceException e) {
+            throw e; // re-raise
+        } catch (Exception e) { // unhandled exceptions
+            logger.error("Error getting Wishlist by id={}", wishlistId.toString(), e);
+            throw new RuntimeException("Internal Service Error");
+        }
     }
 }
