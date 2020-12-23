@@ -24,18 +24,18 @@ public class DynamoRepository implements Repository {
 
     @Override
     public Wishlist getById(UUID wishlistId) {
-            WishlistStorable storable = wishlistStorableTable.getItem(Key.builder()
-                    .partitionValue(wishlistId.toString())
-                    .build());
+        WishlistStorable storable = wishlistStorableTable.getItem(Key.builder()
+                .partitionValue(wishlistId.toString())
+                .build());
 
-            if (storable == null) {
-                throw new MissingResourceException(
-                        "Wishlist not found",
-                        Wishlist.class.getName(),
-                        wishlistId.toString());
-            }
+        if (storable == null) {
+            throw new MissingResourceException(
+                    "Wishlist not found",
+                    Wishlist.class.getName(),
+                    wishlistId.toString());
+        }
 
-            return storable.toWishlist();
+        return storable.toWishlist();
     }
 
     @Override
