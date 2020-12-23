@@ -1,8 +1,10 @@
 package org.alexgraham.wishlist;
 
+import org.alexgraham.wishlist.domain.Item;
 import org.alexgraham.wishlist.domain.Wishlist;
 import org.alexgraham.wishlist.domain.WishlistService;
 import org.alexgraham.wishlist.persistence.DynamoRepository;
+import org.alexgraham.wishlist.persistence.ItemStorable;
 import org.alexgraham.wishlist.persistence.WishlistStorable;
 import org.junit.jupiter.api.*;
 import org.testcontainers.containers.GenericContainer;
@@ -18,6 +20,7 @@ import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
 
 import java.net.URI;
+import java.util.List;
 import java.util.MissingResourceException;
 import java.util.UUID;
 
@@ -75,6 +78,64 @@ class IntegrationTest {
     }
 
     @Nested
+    @DisplayName("AddItemToWishlist")
+    class AddItemToWishlist {
+
+        @Test
+        void validItem_addOne_success() {
+            UUID wishlistId = UUID.randomUUID();
+            UUID owner = UUID.randomUUID();
+            addWishlistInDynamo(wishlistId, owner, "test-name");
+
+            Item item = wishlistService.addItemToWishlist(wishlistId, "test-wishlist-item");
+
+            ItemStorable itemStorable = wishlistStorableDynamoDbTable.getItem(Key.builder()
+                    .partitionValue(wishlistId.toString())
+                    .build())
+                    .getItems()
+                    .get(0);
+            assertThat(itemStorable.getId(), is(item.itemId().toString()));
+            assertThat(itemStorable.getDetails(), is(item.details()));
+        }
+
+        // note that this tests a few key behaviors:
+        //   - Items are ordered based on when they were added
+        //   - Retrieving the Wishlist from the repo will include the full list of items.
+        @Test
+        void validItem_addMultiple_success() {
+            UUID wishlistId = UUID.randomUUID();
+            UUID owner = UUID.randomUUID();
+            addWishlistInDynamo(wishlistId, owner, "test-name");
+
+            Item itemA = wishlistService.addItemToWishlist(wishlistId, "test-wishlist-item-A");
+            Item itemB = wishlistService.addItemToWishlist(wishlistId, "test-wishlist-item-B");
+            Item itemC = wishlistService.addItemToWishlist(wishlistId, "test-wishlist-item-C");
+
+            List<ItemStorable> itemStorableList = wishlistStorableDynamoDbTable.getItem(Key.builder()
+                    .partitionValue(wishlistId.toString())
+                    .build())
+                    .getItems();
+            assertThat(itemStorableList.get(0).getId(), is(itemA.itemId().toString()));
+            assertThat(itemStorableList.get(1).getId(), is(itemB.itemId().toString()));
+            assertThat(itemStorableList.get(2).getId(), is(itemC.itemId().toString()));
+        }
+
+        @Test
+        void whenWishlistDoesNotExist_throwsMissingResourceException() {
+            assertThrows(MissingResourceException.class,
+                    () -> wishlistService.addItemToWishlist(UUID.randomUUID(), "foo"));
+        }
+
+        @Test
+        void whenItemIsNotValid_throwsIllegalArgumentException() {
+            UUID wishlistId = UUID.randomUUID();
+            addWishlistInDynamo(wishlistId, UUID.randomUUID(), "foo");
+            assertThrows(IllegalArgumentException.class,
+                    () -> wishlistService.addItemToWishlist(wishlistId, null));
+        }
+    }
+
+    @Nested
     @DisplayName("CreateWishlist")
     class CreateWishlist {
 
@@ -103,14 +164,10 @@ class IntegrationTest {
     class GetWishlistById {
 
         @Test
-        void success() {
+        void wishlistWithoutItems_success() {
             UUID wishlistId = UUID.randomUUID();
             UUID owner = UUID.randomUUID();
-            WishlistStorable wishlistStorable = new WishlistStorable(
-                    wishlistId.toString(),
-                    owner.toString(),
-                    "test-name");
-            wishlistStorableDynamoDbTable.putItem(wishlistStorable);
+            addWishlistInDynamo(wishlistId, owner, "test-name");
 
             Wishlist wishlist = wishlistService.getWishlistById(wishlistId);
 
@@ -120,11 +177,34 @@ class IntegrationTest {
         }
 
         @Test
+        void wishlistWithSomeItems_success() {
+            UUID wishlistId = UUID.randomUUID();
+            UUID owner = UUID.randomUUID();
+            addWishlistInDynamo(wishlistId, owner, "test-name");
+            Item itemA = wishlistService.addItemToWishlist(wishlistId, "test-wishlist-item-A");
+            Item itemB = wishlistService.addItemToWishlist(wishlistId, "test-wishlist-item-B");
+
+            Wishlist wishlist = wishlistService.getWishlistById(wishlistId);
+
+            assertThat(wishlist.items().size(), is(2));
+            assertThat(wishlist.items().get(0).itemId(), is(itemA.itemId()));
+            assertThat(wishlist.items().get(1).itemId(), is(itemB.itemId()));
+        }
+
+        @Test
         void missingWishlist() {
             UUID wishlistId = UUID.randomUUID();
 
             assertThrows(MissingResourceException.class, () -> wishlistService.getWishlistById(wishlistId));
         }
+    }
 
+    private void addWishlistInDynamo(UUID wishlistId, UUID owner, String name) {
+        WishlistStorable wishlistStorable = new WishlistStorable(
+                wishlistId.toString(),
+                owner.toString(),
+                name,
+                List.of());
+        wishlistStorableDynamoDbTable.putItem(wishlistStorable);
     }
 }

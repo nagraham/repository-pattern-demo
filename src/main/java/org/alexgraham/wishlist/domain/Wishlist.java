@@ -1,5 +1,7 @@
 package org.alexgraham.wishlist.domain;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -12,11 +14,13 @@ public class Wishlist {
     private UUID wishlistId;
     private UUID ownerId;
     private String name;
+    private List<Item> items;
 
-    private Wishlist(UUID wishlistId, UUID ownerId, String name) {
+    private Wishlist(UUID wishlistId, UUID ownerId, String name, List<Item> items) {
         this.wishlistId = wishlistId;
         this.ownerId = ownerId;
         this.name = name;
+        this.items = items;
     }
 
     public UUID wishlistId() {
@@ -31,16 +35,19 @@ public class Wishlist {
         return name;
     }
 
+    public List<Item> items() {
+        return List.copyOf(this.items);
+    }
 
     /**
-     * Creates a new Wishlist
+     * Creates a new Wishlist with an empty set of Items.
      *
      * @param ownerId The id of the owner of this wishlist
      * @param name The name of the wishlist
      * @return A new wishlist
      */
     static Wishlist create(UUID ownerId, String name) {
-        return new Wishlist(UUID.randomUUID(), ownerId, name);
+        return new Wishlist(UUID.randomUUID(), ownerId, name, new ArrayList<>());
     }
 
     /**
@@ -54,8 +61,17 @@ public class Wishlist {
      * @param name The name of the wishlist
      * @return the rehydrated wishlist object
      */
-    public static Wishlist rehydrate(UUID wishlistId, UUID ownerId, String name) {
-        return new Wishlist(wishlistId, ownerId, name);
+    public static Wishlist rehydrate(
+            UUID wishlistId,
+            UUID ownerId,
+            String name,
+            List<Item> items
+    ) {
+        return new Wishlist(wishlistId, ownerId, name, items);
+    }
+
+    public void addItem(Item item) {
+        this.items.add(item);
     }
 
     /**
