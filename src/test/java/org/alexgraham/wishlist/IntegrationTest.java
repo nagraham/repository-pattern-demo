@@ -23,8 +23,11 @@ import java.net.URI;
 import java.util.List;
 import java.util.MissingResourceException;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.contains;
+import static org.hamcrest.Matchers.empty;
 import static org.hamcrest.Matchers.is;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
@@ -199,6 +202,133 @@ class IntegrationTest {
         }
     }
 
+    @Nested
+    @DisplayName("ReorderItemInWishlist")
+    class ReorderItemInWishlist {
+
+        private UUID wishlistId;
+
+        @BeforeEach
+        void setup() {
+            wishlistId = UUID.randomUUID();
+            addWishlistInDynamo(wishlistId, UUID.randomUUID(), "test-name");
+        }
+
+        @Nested
+        @DisplayName("with multiple items")
+        class WithMultipleItems {
+
+            private Item itemA;
+            private Item itemB;
+            private Item itemC;
+
+            @BeforeEach
+            void setup() {
+                itemA = wishlistService.addItemToWishlist(wishlistId, "test-wishlist-item-A");
+                itemB = wishlistService.addItemToWishlist(wishlistId, "test-wishlist-item-B");
+                itemC = wishlistService.addItemToWishlist(wishlistId, "test-wishlist-item-C");
+            }
+
+            @Test
+            void reorderLastItemToFront_establishesCorrectOrder() {
+                wishlistService.reorderItemInWishlist(wishlistId, itemC.itemId(), 0);
+
+                List<UUID> itemIdList = getWishlistItemIds(wishlistId);
+                assertThat(itemIdList, contains(itemC.itemId(), itemA.itemId(), itemB.itemId()));
+            }
+
+            @Test
+            void reorderLastItemToMiddle_establishesCorrectOrder() {
+                wishlistService.reorderItemInWishlist(wishlistId, itemC.itemId(), 1);
+
+                List<UUID> itemIdList = getWishlistItemIds(wishlistId);
+                assertThat(itemIdList, contains(itemA.itemId(), itemC.itemId(), itemB.itemId()));
+            }
+
+            @Test
+            void reorderFrontToLast_establishesCorrectOrder() {
+                wishlistService.reorderItemInWishlist(wishlistId, itemA.itemId(), 2);
+
+                List<UUID> itemIdList = getWishlistItemIds(wishlistId);
+                assertThat(itemIdList, contains(itemB.itemId(), itemC.itemId(), itemA.itemId()));
+            }
+
+            @Test
+            void reorderFrontToMiddle_establishesCorrectOrder() {
+                wishlistService.reorderItemInWishlist(wishlistId, itemA.itemId(), 1);
+
+                List<UUID> itemIdList = getWishlistItemIds(wishlistId);
+                assertThat(itemIdList, contains(itemB.itemId(), itemA.itemId(), itemC.itemId()));
+            }
+
+            @Test
+            void reorderMiddleToFront_establishesCorrectOrder() {
+                wishlistService.reorderItemInWishlist(wishlistId, itemB.itemId(), 0);
+
+                List<UUID> itemIdList = getWishlistItemIds(wishlistId);
+                assertThat(itemIdList, contains(itemB.itemId(), itemA.itemId(), itemC.itemId()));
+            }
+
+            @Test
+            void reorderMiddleToBack_establishesCorrectOrder() {
+                wishlistService.reorderItemInWishlist(wishlistId, itemB.itemId(), 2);
+
+                List<UUID> itemIdList = getWishlistItemIds(wishlistId);
+                assertThat(itemIdList, contains(itemA.itemId(), itemC.itemId(), itemB.itemId()));
+            }
+
+            @Test
+            void givenIndexGreaterThanLength_movesItemToEnd() {
+                wishlistService.reorderItemInWishlist(wishlistId, itemA.itemId(), 101);
+
+                List<UUID> itemIdList = getWishlistItemIds(wishlistId);
+                assertThat(itemIdList, contains(itemB.itemId(), itemC.itemId(), itemA.itemId()));
+            }
+        }
+
+        @Test
+        void wishlistHasOneItem_doesNothing() {
+            Item itemA = wishlistService.addItemToWishlist(wishlistId, "test-wishlist-item-A");
+
+            wishlistService.reorderItemInWishlist(wishlistId, itemA.itemId(), 3);
+
+            List<UUID> itemIdList = getWishlistItemIds(wishlistId);
+            assertThat(itemIdList, contains(itemA.itemId()));
+        }
+
+        @Test
+        void wishlistHasNoItems_doesNothing() {
+            wishlistService.reorderItemInWishlist(wishlistId, UUID.randomUUID(), 3);
+
+            List<UUID> itemIdList = getWishlistItemIds(wishlistId);
+            assertThat(itemIdList, is(empty()));
+        }
+
+        @Test
+        void whenItemNotPresent_throwsMissingResourceException() {
+            // only throws if size > 1, b/c otherwise we terminate the function early
+            wishlistService.addItemToWishlist(wishlistId, "test-wishlist-item-A");
+            wishlistService.addItemToWishlist(wishlistId, "test-wishlist-item-B");
+
+            assertThrows(MissingResourceException.class, () ->
+                    wishlistService.reorderItemInWishlist(wishlistId, UUID.randomUUID(), 0));
+        }
+
+        @Test
+        void whenIndexNegative_throwsIllegalArgumentException() {
+            Item itemA = wishlistService.addItemToWishlist(wishlistId, "test-wishlist-item-A");
+
+            assertThrows(IllegalArgumentException.class, () ->
+                    wishlistService.reorderItemInWishlist(wishlistId, itemA.itemId(), -1));
+        }
+
+        @Test
+        void whenItemIdIsNull_throwsIllegalArgumentException() {
+            assertThrows(IllegalArgumentException.class, () ->
+                    wishlistService.reorderItemInWishlist(wishlistId, null, -1));
+        }
+    }
+
     private void addWishlistInDynamo(UUID wishlistId, UUID owner, String name) {
         WishlistStorable wishlistStorable = new WishlistStorable(
                 wishlistId.toString(),
@@ -206,5 +336,19 @@ class IntegrationTest {
                 name,
                 List.of());
         wishlistStorableDynamoDbTable.putItem(wishlistStorable);
+    }
+
+    private WishlistStorable getWishlistStorable(UUID wishlistId) {
+        return wishlistStorableDynamoDbTable.getItem(Key.builder()
+                .partitionValue(wishlistId.toString())
+                .build());
+    }
+
+    private List<UUID> getWishlistItemIds(UUID wishlistId) {
+        WishlistStorable wishlistStorable = getWishlistStorable(wishlistId);
+        return wishlistStorable.getItems()
+                .stream()
+                .map(itemStorable -> UUID.fromString(itemStorable.getId()))
+                .collect(Collectors.toList());
     }
 }

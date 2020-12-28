@@ -77,6 +77,29 @@ public class WishlistService {
         return getWishlistFromRepo(wishlistId);
     }
 
+    /**
+     * For an Item with the given id, re-orders that item within the Wishlist.
+     *
+     * When re-ordering, items are shifted back. If the value is greater than
+     * the length of the wishlist, the item moved to the end
+     *
+     * @param wishlistId ID of an existing Wishlist
+     * @param itemId ID of an existing Item within that Wishlist
+     * @param index The index into which the Item should be moved. If greater than
+     *              the total number of Items, the Item will be added to the end.
+     * @throws MissingResourceException if the Wishlist or Item do not exist
+     * @throws IllegalArgumentException if the arguments are invalid
+     */
+    public void reorderItemInWishlist(UUID wishlistId, UUID itemId, int index) {
+        Wishlist wishlist = getWishlistFromRepo(wishlistId);
+        wishlist.reorderItem(itemId, index);
+        saveWishlist(wishlist);
+    }
+
+    /*
+     * PRIVATE FUNCTIONS
+     */
+
     private Wishlist getWishlistFromRepo(UUID wishlistId) {
         try {
             return repo.getById(wishlistId);

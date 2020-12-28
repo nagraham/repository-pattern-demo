@@ -2,6 +2,7 @@ package org.alexgraham.wishlist.domain;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.MissingResourceException;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -70,8 +71,50 @@ public class Wishlist {
         return new Wishlist(wishlistId, ownerId, name, items);
     }
 
+    /**
+     * Adds an item to the Wishlist
+     *
+     * @param item the item to add
+     */
     public void addItem(Item item) {
         this.items.add(item);
+    }
+
+    /**
+     * Re-orders an item in the List.
+     *
+     * @param itemId the id of the item to re-order
+     * @param index the index into which the item should be inserted
+     */
+    public void reorderItem(UUID itemId, int index) {
+        if (itemId == null) {
+            throw new IllegalArgumentException("null itemId");
+        }
+        if (index < 0) {
+            throw new IllegalArgumentException("negative index=" + index);
+        }
+        if (items.size() <= 1) { // not large enough to re-order
+            return;
+        }
+
+        int indexOfOldLocation = -1;
+        for (int i = 0; i < items.size(); i++) {
+            if (itemId.equals(items.get(i).itemId())) {
+                indexOfOldLocation = i;
+                break;
+            }
+        }
+
+        if (indexOfOldLocation == -1) {
+            throw new MissingResourceException("the item with id=" + wishlistId + " does not exist in wishlist=" +
+                    wishlistId, Item.class.getName(), itemId.toString());
+        }
+
+        // if the given index is greater than the size, append it to the end
+        index = Math.min(index, items.size() - 1);
+
+        Item item = items.remove(indexOfOldLocation);
+        items.add(index, item);
     }
 
     /**
