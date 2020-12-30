@@ -6,7 +6,11 @@ import org.alexgraham.wishlist.domain.WishlistService;
 import org.alexgraham.wishlist.persistence.DynamoRepository;
 import org.alexgraham.wishlist.persistence.ItemStorable;
 import org.alexgraham.wishlist.persistence.WishlistStorable;
-import org.junit.jupiter.api.*;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Test;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -16,8 +20,12 @@ import software.amazon.awssdk.enhanced.dynamodb.DynamoDbEnhancedClient;
 import software.amazon.awssdk.enhanced.dynamodb.DynamoDbTable;
 import software.amazon.awssdk.enhanced.dynamodb.Key;
 import software.amazon.awssdk.enhanced.dynamodb.TableSchema;
+import software.amazon.awssdk.enhanced.dynamodb.model.CreateTableEnhancedRequest;
+import software.amazon.awssdk.enhanced.dynamodb.model.EnhancedGlobalSecondaryIndex;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
+import software.amazon.awssdk.services.dynamodb.model.Projection;
+import software.amazon.awssdk.services.dynamodb.model.ProjectionType;
 
 import java.net.URI;
 import java.util.List;
@@ -27,8 +35,11 @@ import java.util.stream.Collectors;
 
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.contains;
+import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.hamcrest.Matchers.empty;
+import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.is;
+import static org.hamcrest.Matchers.nullValue;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 /**
@@ -70,9 +81,20 @@ class IntegrationTest {
                 .dynamoDbClient(dynamoDbClient)
                 .build();
 
-        wishlistStorableDynamoDbTable = dynamoDbEnhancedClient
-                .table(TABLE_NAME, TableSchema.fromBean(WishlistStorable.class));
-        wishlistStorableDynamoDbTable.createTable();
+        wishlistStorableDynamoDbTable = dynamoDbEnhancedClient.table(TABLE_NAME,
+                TableSchema.fromBean(WishlistStorable.class));
+
+        wishlistStorableDynamoDbTable.createTable(CreateTableEnhancedRequest.builder()
+                .globalSecondaryIndices(EnhancedGlobalSecondaryIndex.builder()
+                        .indexName(DynamoRepository.GSI_WISHLIST_BY_OWNERS)
+                        .projection(
+                                Projection.builder()
+                                        .projectionType(ProjectionType.INCLUDE)
+                                        .nonKeyAttributes("name")
+                                        .build())
+                        .build()
+                )
+                .build());
     }
 
     @BeforeEach
@@ -199,6 +221,77 @@ class IntegrationTest {
             UUID wishlistId = UUID.randomUUID();
 
             assertThrows(MissingResourceException.class, () -> wishlistService.getWishlistById(wishlistId));
+        }
+    }
+
+    @Nested
+    @DisplayName("ListWishlistsByOwner")
+    class ListWishlistsByOwner {
+
+        private UUID ownerA;
+
+        @BeforeEach
+        void setup() {
+            ownerA = UUID.randomUUID();
+        }
+
+        @Test
+        void whenOwnerDoesNotHaveWishlists_returnEmptyList() {
+            List<Wishlist> results = wishlistService.listWishlistsByOwner(ownerA);
+
+            assertThat(results, is(empty()));
+        }
+
+        @Test
+        void whenOwnerHasOneWishlist_returnListWithOneWishlist() {
+            UUID wishlistId = UUID.randomUUID();
+            addWishlistInDynamo(wishlistId, ownerA, "test-name");
+
+            List<Wishlist> results = wishlistService.listWishlistsByOwner(ownerA);
+
+            assertThat(results, is(hasSize(1)));
+            assertThat(results.get(0).wishlistId(), is(wishlistId));
+        }
+
+        @Test
+        void whenOwnerHasTwoWishlists_returnListWithTwoWishlists() {
+            UUID wishlistIdA = UUID.randomUUID();
+            UUID wishlistIdB = UUID.randomUUID();
+            addWishlistInDynamo(wishlistIdA, ownerA, "test-name-A");
+            addWishlistInDynamo(wishlistIdB, ownerA, "test-name-B");
+
+            List<Wishlist> results = wishlistService.listWishlistsByOwner(ownerA);
+
+            assertThat(results, is(hasSize(2)));
+            List<UUID> idsFromResults = extractWishlistIds(results);
+            assertThat(idsFromResults, containsInAnyOrder(wishlistIdA, wishlistIdB));
+        }
+
+        @Test
+        void whenOwnerHasTwoWishlists_andOtherOwnersHaveWishlists_returnListOnlyWithOwnersWishlists() {
+            UUID wishlistIdA = UUID.randomUUID();
+            UUID wishlistIdB = UUID.randomUUID();
+            addWishlistInDynamo(wishlistIdA, ownerA, "test-name-A");
+            addWishlistInDynamo(wishlistIdB, ownerA, "test-name-B");
+            addWishlistInDynamo(UUID.randomUUID(), UUID.randomUUID(), "test-name-C");
+
+            List<Wishlist> results = wishlistService.listWishlistsByOwner(ownerA);
+
+            assertThat(results, hasSize(2));
+            List<UUID> idsFromResults = extractWishlistIds(results);
+            assertThat(idsFromResults, containsInAnyOrder(wishlistIdA, wishlistIdB));
+        }
+
+        @Test
+        void whenAWishlistHasItems_theItemsFieldReturnsNull() {
+            UUID wishlistId = UUID.randomUUID();
+            addWishlistInDynamo(wishlistId, ownerA, "test-name-A");
+            wishlistService.addItemToWishlist(wishlistId, "test-wishlist-item-A");
+
+            List<Wishlist> results = wishlistService.listWishlistsByOwner(ownerA);
+
+            assertThat(results, hasSize(1));
+            assertThat(results.get(0).items(), is(nullValue()));
         }
     }
 
@@ -350,5 +443,9 @@ class IntegrationTest {
                 .stream()
                 .map(itemStorable -> UUID.fromString(itemStorable.getId()))
                 .collect(Collectors.toList());
+    }
+
+    private List<UUID> extractWishlistIds(List<Wishlist> listOfWishlists) {
+        return listOfWishlists.stream().map(Wishlist::wishlistId).collect(Collectors.toList());
     }
 }

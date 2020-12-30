@@ -37,7 +37,7 @@ public class Wishlist {
     }
 
     public List<Item> items() {
-        return List.copyOf(this.items);
+        return items == null ? null : List.copyOf(items);
     }
 
     /**

@@ -3,6 +3,8 @@ package org.alexgraham.wishlist.domain;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.Collections;
+import java.util.List;
 import java.util.MissingResourceException;
 import java.util.UUID;
 
@@ -75,6 +77,26 @@ public class WishlistService {
     public Wishlist getWishlistById(UUID wishlistId) {
         // TODO: Authorize access
         return getWishlistFromRepo(wishlistId);
+    }
+
+    /**
+     * Returns a list of Wishlists owned by the given owner, or an empty list of the
+     * owner does not have any Wishlists.
+     *
+     * These Wishlists will not contain Items (that field will be set to null).
+     *
+     * @param ownerId The id of the owner
+     * @return a list of Wishlists
+     */
+    public List<Wishlist> listWishlistsByOwner(UUID ownerId) {
+        List<Wishlist> wishlistList;
+        try {
+            wishlistList = repo.queryByOwner(ownerId);
+        } catch (Exception e) { // unhandled exceptions
+            logger.error("Error querying Wishlists by ownerId={}", ownerId.toString(), e);
+            throw new RuntimeException("Internal Service Error");
+        }
+        return wishlistList;
     }
 
     /**

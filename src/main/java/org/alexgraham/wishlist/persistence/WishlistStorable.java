@@ -4,6 +4,7 @@ import org.alexgraham.wishlist.domain.Item;
 import org.alexgraham.wishlist.domain.Wishlist;
 import software.amazon.awssdk.enhanced.dynamodb.mapper.annotations.DynamoDbBean;
 import software.amazon.awssdk.enhanced.dynamodb.mapper.annotations.DynamoDbPartitionKey;
+import software.amazon.awssdk.enhanced.dynamodb.mapper.annotations.DynamoDbSecondaryPartitionKey;
 
 import java.util.List;
 import java.util.UUID;
@@ -42,9 +43,12 @@ public class WishlistStorable {
     }
 
     public Wishlist toWishlist() {
-        List<Item> wishlistItems = items.stream()
-                .map(ItemStorable::toItem)
-                .collect(Collectors.toList());
+        List<Item> wishlistItems = null;
+        if (items != null) {
+            wishlistItems = items.stream()
+                    .map(ItemStorable::toItem)
+                    .collect(Collectors.toList());
+        }
 
         return Wishlist.rehydrate(
                 UUID.fromString(id),
@@ -61,6 +65,7 @@ public class WishlistStorable {
         this.id = id;
     }
 
+    @DynamoDbSecondaryPartitionKey(indexNames = DynamoRepository.GSI_WISHLIST_BY_OWNERS)
     public String getOwnerId() {
         return ownerId;
     }
